@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PicDrop · 照片中转</title>
+<style>
+:root{--bg:#0d0f14;--card:#161a22;--border:#262c38;--text:#e8eaf0;--dim:#8b93a3;--accent:#6c8cff;--err:#ff7b72}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh;padding-bottom:44px}
+header{text-align:center;padding:26px 16px 16px}
+header h1{font-size:1.5rem}header h1 span{color:var(--accent)}
+header p{color:var(--dim);font-size:.83rem;margin-top:6px}
+main{max-width:720px;margin:0 auto;padding:0 14px}
+.banner{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin:10px 0 16px;font-size:.88rem;line-height:1.6}
+.banner .row{display:flex;gap:8px;margin-top:10px}
+.banner input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:11px 12px;font-size:.9rem;min-width:0}
+.banner button{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:0 18px;font-size:.9rem;font-weight:600;cursor:pointer}
+.banner small{color:var(--dim);display:block;margin-top:8px}
+.banner.ok{border-color:#3fb950}
+.banner.ok .tag{color:#3fb950;font-weight:600}
+.drop{background:var(--card);border:2px dashed var(--border);border-radius:18px;padding:30px 16px;text-align:center;transition:border-color .2s}
+.drop.on{border-color:var(--accent)}
+.drop .big{font-size:2.4rem}
+.drop p{color:var(--dim);font-size:.88rem;margin-top:6px}
+#pick{display:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:13px 30px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:14px}
+.btn:active{opacity:.85}
+.btn:disabled{opacity:.5}
+.bar{height:6px;background:var(--border);border-radius:99px;margin-top:14px;overflow:hidden;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.status{font-size:.84rem;color:var(--dim);margin-top:9px;min-height:1.3em}
+.status.err{color:var(--err)}
+.head{display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px}
+.head h2{font-size:1.02rem}
+.head button{background:none;border:1px solid var(--border);color:var(--dim);border-radius:10px;padding:7px 14px;font-size:.84rem;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ph{position:relative;border-radius:12px;overflow:hidden;background:var(--card);border:1px solid var(--border);aspect-ratio:1}
+.ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+.ph .ops{position:absolute;left:0;right:0;bottom:0;display:flex;gap:6px;padding:6px;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+.ph .ops a,.ph .ops button{flex:1;text-align:center;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;font-size:.74rem;padding:6px 0;border-radius:8px;border:none;cursor:pointer;backdrop-filter:blur(4px)}
+.empty{color:var(--dim);text-align:center;padding:34px 0;font-size:.9rem}
+.hint{color:var(--dim);font-size:.76rem;text-align:center;margin-top:22px;line-height:1.8}
+.toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:9px 22px;border-radius:99px;font-size:.88rem;opacity:0;pointer-events:none;transition:all .25s;z-index:9}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header><h1>Pic<span>Drop</span></h1><p>手机 A 上传 → 手机 B 打开同一链接下载 · 存储在 GitHub 仓库</p></header>
+<main>
+<div class="banner" id="cfg">
+  <span class="tag" id="cfgTag"></span><span id="cfgTxt"></span>
+  <div class="row" id="cfgRow">
+    <input type="password" id="tok" placeholder="粘贴 GitHub token（ghp_ 开头）" autocomplete="off">
+    <button onclick="saveTok()">保存</button>
+  </div>
+  <small id="cfgHint">上传/删除需要 token，只保存在本机浏览器（localStorage），不会提交到仓库。下载与浏览无需 token。</small>
+</div>
+<div class="drop" id="drop">
+  <div class="big">📷</div>
+  <p>选择或拍摄照片，支持多选</p>
+  <input type="file" id="pick" accept="image/*" multiple>
+  <button class="btn" id="upBtn" onclick="document.getElementById('pick').click()">选照片 / 拍照</button>
+  <div class="bar" id="bar"><i id="fill"></i></div>
+  <div class="status" id="status"></div>
+</div>
+<div class="head"><h2>照片 <span id="cnt" style="color:var(--dim);font-weight:400"></span></h2><button onclick="load()">刷新</button></div>
+<div class="grid" id="grid"></div>
+<div class="empty" id="empty">还没有照片</div>
+<p class="hint">照片存于公开仓库 8-14ban/picdrop，任何知道链接的人都能看到，别传隐私照<br>iOS 保存：点图片打开后长按存储，或点下载后允许分享到相册</p>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const OWNER="8-14ban",REPO="picdrop",DIR="photos";
+const API="https://api.github.com/repos/"+OWNER+"/"+REPO;
+const RAW="https://raw.githubusercontent.com/"+OWNER+"/"+REPO+"/main/"+DIR;
+const $=s=>document.querySelector(s);
+let token=localStorage.getItem("picdrop_token")||"";
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),1800)}
+function hdrs(){const h={"Accept":"application/vnd.github+json"};if(token)h.Authorization="Bearer "+token;return h}
+function cfgUI(){
+  const c=$("#cfg");
+  if(token){c.classList.add("ok");$("#cfgTag").textContent="已配置";$("#cfgTxt").textContent=" token 已保存在本机";$("#cfgRow").style.display="none"}
+  else{c.classList.remove("ok");$("#cfgTag").textContent="";$("#cfgTxt").textContent="尚未配置上传令牌";$("#cfgRow").style.display="flex"}
+}
+function saveTok(){const v=$("#tok").value.trim();if(!v){toast("先粘贴 token");return}token=v;localStorage.setItem("picdrop_token",v);$("#tok").value="";cfgUI();toast("已保存到本机")}
+async function list(){
+  const r=await fetch(API+"/contents/"+DIR+"?ref=main&per_page=100",{headers:hdrs()});
+  if(!r.ok)return[];
+  const arr=await r.json();
+  return Array.isArray(arr)?arr.filter(x=>x.type==="file"&&x.name!==".gitkeep"):[];
+}
+async function load(){
+  $("#empty").textContent="加载中...";
+  const items=await list();
+  $("#cnt").textContent=items.length?("共 "+items.length+" 张"):"";
+  $("#empty").style.display=items.length?"none":"block";
+  $("#empty").textContent="还没有照片";
+  const g=$("#grid");g.innerHTML="";
+  items.forEach(f=>{
+    const url=RAW+"/"+encodeURIComponent(f.name);
+    const d=document.createElement("div");d.className="ph";
+    d.innerHTML='<img loading="lazy" src="'+url+'" alt="">'
+      +'<div class="ops"><a href="'+url+'" target="_blank" rel="noopener">查看</a>'
+      +'<a href="'+url+'" download="'+f.name+'" data-dl="'+f.name+'">下载</a></div>';
+    d.querySelector("img").onclick=()=>open(url,"_blank");
+    d.querySelector("[data-dl]").onclick=e=>{e.preventDefault();dl(f.name,e.target)};
+    g.appendChild(d);
+  });
+}
+async function dl(name,el){
+  el.textContent="...";el.style.pointerEvents="none";
+  try{
+    const r=await fetch(RAW+"/"+encodeURIComponent(name));
+    const b=await r.blob();
+    const file=new File([b],name,{type:b.type||"image/jpeg"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file]});toast("已打开分享/存储");
+    }else{
+      const u=URL.createObjectURL(b);const a=document.createElement("a");
+      a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(u),5000);toast("已开始下载");
+    }
+  }catch(err){toast("下载失败")}
+  el.textContent="下载";el.style.pointerEvents="";
+}
+function uniqueName(orig){
+  const dot=orig.lastIndexOf(".");
+  const ext=dot>=0?orig.slice(dot).toLowerCase().replace(/[^.a-z0-9]/g,""):"";
+  let base=dot>=0?orig.slice(0,dot):orig;
+  base=base.replace(/[^\x20-\x7e]/g,"").replace(/[\\/:*?"<>| ]/g,"_").slice(0,60);
+  if(!base)base="photo";
+  return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,6)+"-"+base+ext;
+}
+function toB64(buf){
+  const u=new Uint8Array(buf);let s="";
+  for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));
+  return btoa(s);
+}
+async function upload(files){
+  files=[...files].filter(f=>f.type.startsWith("image/")||/\.(heic|heif)$/i.test(f.name));
+  if(!files.length){st("没有可选的照片",1);return}
+  if(!token){st("请先在上方配置上传 token",1);$("#tok").focus();return}
+  $("#upBtn").disabled=true;
+  let ok=0,fail=0;
+  for(let i=0;i<files.length;i++){
+    const f=files[i];
+    try{
+      st("上传中 "+(i+1)+"/"+files.length+"："+f.name);
+      const content=toB64(await f.arrayBuffer());
+      const name=uniqueName(f.name);
+      const r=await fetch(API+"/contents/"+DIR+"/"+encodeURIComponent(name),{
+        method:"PUT",headers:{...hdrs(),"Content-Type":"application/json"},
+        body:JSON.stringify({message:"add "+name,content})
+      });
+      if(r.ok||r.status===422){if(r.ok)ok++;else fail++}
+      else{fail++;console.warn(await r.text())}
+    }catch(e){fail++}
+    $("#fill").style.width=Math.round((i+1)/files.length*100)+"%";
+  }
+  $("#fill").style.width="0";
+  $("#upBtn").disabled=false;
+  st("完成：成功 "+ok+" 张"+(fail?("，失败 "+fail+" 张"):""),fail?1:0);
+  if(ok)toast("上传成功");
+  $("#pick").value="";load();
+}
+function st(t,e){const el=$("#status");el.textContent=t;el.classList.toggle("err",!!e)}
+$("#pick").addEventListener("change",e=>upload(e.target.files));
+const drop=$("#drop");
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("on")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("on")}));
+drop.addEventListener("drop",e=>upload(e.dataTransfer.files));
+cfgUI();load();
+</script>
+</body>
+</html>
